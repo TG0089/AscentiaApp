@@ -1,0 +1,7 @@
+streamlit
+yfinance
+pandas
+gspread
+oauth2client
+streamlit-authenticator
+numpy
