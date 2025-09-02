@@ -10,8 +10,8 @@ import numpy as np
 # ---------------------
 # Authentication
 # ---------------------
-with open('credentials.yaml') as file:
-    config = file.read()
+with open("credentials.yaml", "r") as file:
+    config = yaml.safe_load(file)
 
 authenticator = stauth.Authenticate(
     config,
@@ -174,3 +174,4 @@ elif authentication_status is False:
     st.error("Username/password is incorrect")
 elif authentication_status is None:
     st.warning("Please enter your username and password")
+
