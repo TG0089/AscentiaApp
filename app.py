@@ -21,16 +21,15 @@ authenticator = stauth.Authenticate(
     cookie_expiry_days=config['cookie']['expiry_days']
 )
 
-# Show the login form in the sidebar
-authenticator.login(form_name="Login", location="sidebar")
+name, authentication_status, username = authenticator.login("sidebar")
 
-# Handle authentication states
-if authenticator.authentication_status:
-    st.write(f"Welcome *{authenticator.username}*")
-elif authenticator.authentication_status is False:
+if authentication_status:
+    st.write(f"Welcome *{name}*")
+elif authentication_status is False:
     st.error("Username/password is incorrect")
-elif authenticator.authentication_status is None:
+elif authentication_status is None:
     st.warning("Please enter your username and password")
+
 
 
 
@@ -186,6 +185,7 @@ elif authentication_status is False:
     st.error("Username/password is incorrect")
 elif authentication_status is None:
     st.warning("Please enter your username and password")
+
 
 
 
