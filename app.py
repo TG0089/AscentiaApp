@@ -24,30 +24,27 @@ authenticator = stauth.Authenticate(
 # -----------------------------
 # Streamlit Authenticator Login
 # -----------------------------
-# Call login and store result
-login_result = authenticator.login("sidebar", key="login_form_1")
+login_result = authenticator.login(location="sidebar", key="login_form_1")
 
 # Initialize default values
 name = ""
+username = ""
 authentication_status = None
 
-# Handle login result for older versions
+# Handle login result
 if login_result is not None and isinstance(login_result, tuple):
     name, authentication_status, username = login_result
-
-# For newer versions (>=0.3.2), access via properties
 elif hasattr(authenticator, "authentication_status"):
     authentication_status = authenticator.authentication_status
-    name = getattr(authenticator, "username", "")
+    name = getattr(authenticator, "name", "")
+    username = getattr(authenticator, "username", "")
 
-# Handle authentication states safely
+# -----------------------------
+# Handle authentication states
+# -----------------------------
 if authentication_status:
     st.sidebar.success(f"Welcome, {name}!")
     authenticator.logout("Logout", "sidebar")
-elif authentication_status is False:
-    st.sidebar.error("Username/password is incorrect")
-else:
-    st.sidebar.warning("Please enter your username and password")
 
     # ---------------------
     # Google Sheets
@@ -86,45 +83,40 @@ else:
             max_per_indicator = 9
 
             # 1) P/E
+            s = 5
             if not np.isnan(pe):
                 s = 9 if pe < 10 else 7 if pe < 15 else 5 if pe < 20 else 3 if pe < 30 else 1
-            else:
-                s = 5
             breakdown.append({'indicator':'P/E','score':s,'reason':f'P/E={pe}'})
             total_score += s
 
             # 2) Earnings growth (price % change 1yr)
+            s = 5
             if len(closes) >= 252:
                 pct = (closes[-1]-closes[0])/closes[0]*100
                 s = 9 if pct>50 else 7 if pct>20 else 5 if pct>0 else 3 if pct>-20 else 1
-            else:
-                s = 5
             breakdown.append({'indicator':'Earnings Growth','score':s,'reason':f'Price change ≈ {pct:.1f}%' if len(closes)>=2 else 'N/A'})
             total_score += s
 
             # 3) ROE
+            s = 5
             if not np.isnan(roe):
                 roe_pct = roe*100 if roe<1 else roe
                 s = 9 if roe_pct>20 else 7 if roe_pct>10 else 4 if roe_pct>5 else 2
-            else:
-                s = 5
             breakdown.append({'indicator':'ROE','score':s,'reason':f'{roe_pct:.1f}%' if not np.isnan(roe) else 'N/A'})
             total_score += s
 
             # 4) Debt-to-Equity
+            s = 5
             if not np.isnan(de):
                 s = 9 if de<20 else 7 if de<50 else 4 if de<100 else 1
-            else:
-                s = 5
             breakdown.append({'indicator':'Debt/Equity','score':s,'reason':f'{de}'})
             total_score += s
 
             # 5) Dividend Yield
+            s = 5
             if not np.isnan(div_yield):
                 dy_pct = div_yield*100
                 s = 9 if dy_pct>5 else 7 if dy_pct>3 else 5 if dy_pct>1.5 else 2
-            else:
-                s = 5
             breakdown.append({'indicator':'Dividend Yield','score':s,'reason':f'{dy_pct:.2f}%' if not np.isnan(div_yield) else 'N/A'})
             total_score += s
 
@@ -195,8 +187,10 @@ else:
 
 elif authentication_status is False:
     st.error("Username/password is incorrect")
-elif authentication_status is None:
+else:
     st.warning("Please enter your username and password")
+
+
 
 
 
