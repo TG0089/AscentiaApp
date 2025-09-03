@@ -27,11 +27,12 @@ if login_result is not None:
     name, authentication_status, username = login_result
 
     if authentication_status:
-        st.write(f"Welcome *{name}*")
+        st.sidebar.success(f"Welcome, {name}!")
+        authenticator.logout("Logout", "sidebar")
     elif authentication_status is False:
-        st.error("Username/password is incorrect")
+        st.sidebar.error("Username/password is incorrect")
 else:
-    st.warning("Please enter your username and password")
+    st.sidebar.warning("Please enter your username and password")
 
 
 
@@ -189,6 +190,7 @@ elif authentication_status is False:
     st.error("Username/password is incorrect")
 elif authentication_status is None:
     st.warning("Please enter your username and password")
+
 
 
 
