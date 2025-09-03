@@ -5,4 +5,5 @@ gspread==5.8.0
 oauth2client==4.1.3
 streamlit-authenticator==0.4.2
 numpy==1.25.0
-pyyaml==6.0
+pyyaml==6.0.2   # latest in 6.x series, supports 3.13
+
