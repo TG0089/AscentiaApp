@@ -21,8 +21,10 @@ authenticator = stauth.Authenticate(
     cookie_expiry_days=config['cookie']['expiry_days']
 )
 
+# Call login and store the result
 login_result = authenticator.login("sidebar")
 
+# Only unpack if the login form was submitted
 if login_result is not None:
     name, authentication_status, username = login_result
 
@@ -190,6 +192,7 @@ elif authentication_status is False:
     st.error("Username/password is incorrect")
 elif authentication_status is None:
     st.warning("Please enter your username and password")
+
 
 
 
