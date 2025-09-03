@@ -193,10 +193,8 @@ else:
     else:
         st.info("Your watchlist is empty.")
 
-elif authentication_status is False:
-    st.error("Username/password is incorrect")
-elif authentication_status is None:
-    st.warning("Please enter your username and password")
+
+
 
 
 
