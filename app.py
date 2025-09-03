@@ -15,10 +15,10 @@ with open("credentials.yaml", "r") as file:
     config = yaml.safe_load(file)
 
 authenticator = stauth.Authenticate(
-    config,
-    cookie_name="ascentia_login",
-    key="some_random_key",
-    cookie_expiry_days=30
+    config['credentials'],
+    cookie_name=config['cookie']['name'],
+    key=config['cookie']['key'],
+    cookie_expiry_days=config['cookie']['expiry_days']
 )
 
 name, authentication_status, username = authenticator.login("Login", "main")
@@ -175,5 +175,6 @@ elif authentication_status is False:
     st.error("Username/password is incorrect")
 elif authentication_status is None:
     st.warning("Please enter your username and password")
+
 
 
