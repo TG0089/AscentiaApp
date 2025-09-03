@@ -199,10 +199,11 @@ if authentication_status:
             for b in breakdown:
                 st.write(f"{b['indicator']}: {b['score']}/9 → {b['reason']}")
 
-           if st.button("Add to Watchlist"):
+            if st.button("Add to Watchlist"):
                 sheet.append_row([username, ticker_input, str(datetime.now().date())])
                 st.success(f"{ticker_input} added to your watchlist!")
                
+
 
 
 
