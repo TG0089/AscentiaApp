@@ -22,9 +22,9 @@ authenticator = stauth.Authenticate(
 )
 
 name, authentication_status, username = authenticator.login(
-    "Login",
-    "sidebar"
+    location="sidebar"
 )
+
 
 if authentication_status:
     st.sidebar.success(f"Welcome, {name}!")
@@ -178,6 +178,7 @@ elif authentication_status is False:
     st.error("Username/password is incorrect")
 elif authentication_status is None:
     st.warning("Please enter your username and password")
+
 
 
 
