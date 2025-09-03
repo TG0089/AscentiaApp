@@ -23,7 +23,31 @@ authenticator = stauth.Authenticate(
 
 # Call login and store the result
 login_result = authenticator.login("sidebar")
+# -----------------------------
+# Streamlit Authenticator Login
+# -----------------------------
+login_result = authenticator.login("sidebar")  # Old versions
+# For newer versions (>=0.3.2), login() may not return a tuple, so check attributes
 
+# Check if login_result is a tuple (old version)
+if isinstance(login_result, tuple) and login_result is not None:
+    name, authentication_status, username = login_result
+elif hasattr(authenticator, "authentication_status"):
+    # Newer versions: access via properties
+    authentication_status = authenticator.authentication_status
+    name = getattr(authenticator, "username", "")
+else:
+    authentication_status = None
+    name = ""
+
+# Handle login status
+if authentication_status:
+    st.sidebar.success(f"Welcome, {name}!")
+    authenticator.logout("Logout", "sidebar")
+elif authentication_status is False:
+    st.sidebar.error("Username/password is incorrect")
+else:
+    st.sidebar.warning("Please enter your username and password")
 # Only unpack if the login form was submitted
 if login_result is not None:
     name, authentication_status, username = login_result
@@ -192,6 +216,7 @@ elif authentication_status is False:
     st.error("Username/password is incorrect")
 elif authentication_status is None:
     st.warning("Please enter your username and password")
+
 
 
 
