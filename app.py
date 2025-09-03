@@ -4,79 +4,49 @@ import pandas as pd
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 import streamlit_authenticator as stauth
-from streamlit_authenticator import Hasher, Authenticate
 from datetime import datetime
 import numpy as np
 import yaml
-from pathlib import Path
 
 # ---------------------
-# Load credentials
+# Authentication
 # ---------------------
-yaml_file = Path("credentials.yaml")
-with open(yaml_file) as file:
+with open("credentials.yaml", "r") as file:
     config = yaml.safe_load(file)
 
-credentials = config["credentials"]["users"]
+authenticator = stauth.Authenticate(
+    config['credentials'],
+    cookie_name=config['cookie']['name'],
+    key=config['cookie']['key'],
+    cookie_expiry_days=config['cookie']['expiry_days']
+)
 
-# ---------------------
-# Sidebar: Login or Register
-# ---------------------
-st.sidebar.title("Ascentia Login")
-option = st.sidebar.radio("Choose an option:", ["Login", "Register"])
+# -----------------------------
+# Streamlit Authenticator Login
+# -----------------------------
+# Call login and store result
+login_result = authenticator.login("sidebar", key="login_form_1")
 
-username = ""
-authentication_status = None
+# Initialize default values
 name = ""
+authentication_status = None
+username = ""
 
-if option == "Register":
-    st.sidebar.subheader("Create a new account")
-    new_username = st.sidebar.text_input("New username")
-    new_password = st.sidebar.text_input("New password", type="password")
-    confirm_password = st.sidebar.text_input("Confirm password", type="password")
-
-    if st.sidebar.button("Register"):
-        if new_password != confirm_password:
-            st.sidebar.error("Passwords do not match!")
-        elif any(u["username"] == new_username for u in credentials):
-            st.sidebar.error("Username already exists!")
-        else:
-            hashed_password = Hasher([new_password]).generate()[0]
-            credentials.append({"username": new_username, "password": hashed_password})
-            config["credentials"]["users"] = credentials
-            with open(yaml_file, "w") as file:
-                yaml.dump(config, file)
-            st.sidebar.success("Registration successful! You can now log in.")
-
-elif option == "Login":
-    st.sidebar.subheader("Login with your account")
-    authenticator = Authenticate(
-        config['credentials'],
-        cookie_name=config['cookie']['name'],
-        key=config['cookie']['key'],
-        cookie_expiry_days=config['cookie']['expiry_days']
-    )
-    login_result = authenticator.login("Login", "sidebar")
-
-    if login_result is not None and isinstance(login_result, tuple):
-        name, authentication_status, username = login_result
-    elif hasattr(authenticator, "authentication_status"):
-        authentication_status = authenticator.authentication_status
-        name = getattr(authenticator, "username", "")
-        username = name
-
-    if authentication_status:
-        st.sidebar.success(f"Welcome, {name}!")
-        authenticator.logout("Logout", "sidebar")
-    elif authentication_status is False:
-        st.sidebar.error("Username/password is incorrect")
-    else:
-        st.sidebar.warning("Please enter your username and password")
+# Handle login result
+if login_result is not None and isinstance(login_result, tuple):
+    name, authentication_status, username = login_result
+elif hasattr(authenticator, "authentication_status"):
+    authentication_status = authenticator.authentication_status
+    username = getattr(authenticator, "username", "")
+    name = username
 
 # ---------------------
-# Only proceed if authenticated
+# Authentication States
 # ---------------------
 if authentication_status:
+    st.sidebar.success(f"Welcome, {name}!")
+    authenticator.logout("Logout", "sidebar")
+
     # ---------------------
     # Google Sheets
     # ---------------------
@@ -85,12 +55,9 @@ if authentication_status:
         creds = ServiceAccountCredentials.from_json_keyfile_name("service_account.json", scope)
         client = gspread.authorize(creds)
         sheet = client.open("Ascentia_Watchlists").sheet1
-        data = sheet.get_all_records()
-        df_watchlist = pd.DataFrame(data)
-        user_watchlist = df_watchlist[df_watchlist['username'] == username]
     except Exception as e:
         st.error(f"Error connecting to Google Sheets: {e}")
-        user_watchlist = pd.DataFrame(columns=['ticker','date_added'])
+        sheet = None
 
     # ---------------------
     # Stock Search
@@ -118,39 +85,49 @@ if authentication_status:
             max_per_indicator = 9
 
             # 1) P/E
-            s = 5
             if not np.isnan(pe):
                 s = 9 if pe < 10 else 7 if pe < 15 else 5 if pe < 20 else 3 if pe < 30 else 1
+            else:
+                s = 5
             breakdown.append({'indicator':'P/E','score':s,'reason':f'P/E={pe}'})
             total_score += s
 
-            # 2) Earnings growth
-            pct = (closes[-1]-closes[0])/closes[0]*100 if len(closes) >= 2 else 0
-            s = 9 if pct>50 else 7 if pct>20 else 5 if pct>0 else 3 if pct>-20 else 1
+            # 2) Earnings growth (price % change 1yr)
+            if len(closes) >= 252:
+                pct = (closes[-1]-closes[0])/closes[0]*100
+                s = 9 if pct>50 else 7 if pct>20 else 5 if pct>0 else 3 if pct>-20 else 1
+            else:
+                pct = 0
+                s = 5
             breakdown.append({'indicator':'Earnings Growth','score':s,'reason':f'Price change ≈ {pct:.1f}%'})
             total_score += s
 
             # 3) ROE
-            roe_pct = roe*100 if roe<1 else roe
-            s = 5
             if not np.isnan(roe):
+                roe_pct = roe*100 if roe<1 else roe
                 s = 9 if roe_pct>20 else 7 if roe_pct>10 else 4 if roe_pct>5 else 2
-            breakdown.append({'indicator':'ROE','score':s,'reason':f'{roe_pct:.1f}%' if not np.isnan(roe) else 'N/A'})
+            else:
+                roe_pct = np.nan
+                s = 5
+            breakdown.append({'indicator':'ROE','score':s,'reason':f'{roe_pct:.1f}%' if not np.isnan(roe_pct) else 'N/A'})
             total_score += s
 
             # 4) Debt-to-Equity
-            s = 5
             if not np.isnan(de):
                 s = 9 if de<20 else 7 if de<50 else 4 if de<100 else 1
+            else:
+                s = 5
             breakdown.append({'indicator':'Debt/Equity','score':s,'reason':f'{de}'})
             total_score += s
 
             # 5) Dividend Yield
-            s = 5
             if not np.isnan(div_yield):
                 dy_pct = div_yield*100
                 s = 9 if dy_pct>5 else 7 if dy_pct>3 else 5 if dy_pct>1.5 else 2
-            breakdown.append({'indicator':'Dividend Yield','score':s,'reason':f'{dy_pct:.2f}%' if not np.isnan(div_yield) else 'N/A'})
+            else:
+                dy_pct = np.nan
+                s = 5
+            breakdown.append({'indicator':'Dividend Yield','score':s,'reason':f'{dy_pct:.2f}%' if not np.isnan(dy_pct) else 'N/A'})
             total_score += s
 
             # 6) MA Crossover (50 vs 200)
@@ -191,18 +168,41 @@ if authentication_status:
             total_score += s
 
             final_score = round(total_score / (max_per_indicator*10) * 100)
+
             st.subheader(f"{ticker_input} - {info.get('longName','N/A')}")
             st.write(f"**Last Price:** ${last_price:.2f}")
             st.write(f"**Investment Score:** {final_score}/100")
             st.write("**Recommendation:**", "STRONG BUY 🟢" if final_score>=75 else "NEUTRAL 🟡" if final_score>=50 else "AVOID 🔴")
+
             st.subheader("Indicator Breakdown")
             for b in breakdown:
                 st.write(f"{b['indicator']}: {b['score']}/9 → {b['reason']}")
 
-            if st.button("Add to Watchlist"):
+            if sheet is not None and st.button("Add to Watchlist"):
                 sheet.append_row([username, ticker_input, str(datetime.now().date())])
                 st.success(f"{ticker_input} added to your watchlist!")
-               
+
+        except Exception as e:
+            st.error(f"Error fetching data: {e}")
+
+    # ---------------------
+    # User Watchlist
+    # ---------------------
+    if sheet is not None:
+        user_watchlist = pd.DataFrame(sheet.get_all_records())
+        user_watchlist = user_watchlist[user_watchlist['username']==username]
+        st.subheader("My Watchlist")
+        if not user_watchlist.empty:
+            st.table(user_watchlist[['ticker','date_added']])
+        else:
+            st.info("Your watchlist is empty.")
+
+elif authentication_status is False:
+    st.error("Username/password is incorrect")
+elif authentication_status is None:
+   
+
+
 
 
 
