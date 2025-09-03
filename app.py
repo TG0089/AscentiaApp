@@ -4,58 +4,93 @@ import pandas as pd
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 import streamlit_authenticator as stauth
+from streamlit_authenticator import Hasher, Authenticate
 from datetime import datetime
 import numpy as np
 import yaml
+from pathlib import Path
 
 # ---------------------
-# Authentication
+# Load credentials
 # ---------------------
-with open("credentials.yaml", "r") as file:
+yaml_file = Path("credentials.yaml")
+with open(yaml_file) as file:
     config = yaml.safe_load(file)
 
-authenticator = stauth.Authenticate(
-    config['credentials'],
-    cookie_name=config['cookie']['name'],
-    key=config['cookie']['key'],
-    cookie_expiry_days=config['cookie']['expiry_days']
-)
+credentials = config["credentials"]["users"]
 
-# -----------------------------
-# Streamlit Authenticator Login
-# -----------------------------
-login_result = authenticator.login(location="sidebar", key="login_form_1")
+# ---------------------
+# Sidebar: Login or Register
+# ---------------------
+st.sidebar.title("Ascentia Login")
+option = st.sidebar.radio("Choose an option:", ["Login", "Register"])
 
-# Initialize default values
-name = ""
 username = ""
 authentication_status = None
+name = ""
 
-# Handle login result
-if login_result is not None and isinstance(login_result, tuple):
-    name, authentication_status, username = login_result
-elif hasattr(authenticator, "authentication_status"):
-    authentication_status = authenticator.authentication_status
-    name = getattr(authenticator, "name", "")
-    username = getattr(authenticator, "username", "")
+if option == "Register":
+    st.sidebar.subheader("Create a new account")
+    new_username = st.sidebar.text_input("New username")
+    new_password = st.sidebar.text_input("New password", type="password")
+    confirm_password = st.sidebar.text_input("Confirm password", type="password")
 
-# -----------------------------
-# Handle authentication states
-# -----------------------------
+    if st.sidebar.button("Register"):
+        if new_password != confirm_password:
+            st.sidebar.error("Passwords do not match!")
+        elif any(u["username"] == new_username for u in credentials):
+            st.sidebar.error("Username already exists!")
+        else:
+            hashed_password = Hasher([new_password]).generate()[0]
+            credentials.append({"username": new_username, "password": hashed_password})
+            config["credentials"]["users"] = credentials
+            with open(yaml_file, "w") as file:
+                yaml.dump(config, file)
+            st.sidebar.success("Registration successful! You can now log in.")
+
+elif option == "Login":
+    st.sidebar.subheader("Login with your account")
+    authenticator = Authenticate(
+        config['credentials'],
+        cookie_name=config['cookie']['name'],
+        key=config['cookie']['key'],
+        cookie_expiry_days=config['cookie']['expiry_days']
+    )
+    login_result = authenticator.login("Login", "sidebar")
+
+    if login_result is not None and isinstance(login_result, tuple):
+        name, authentication_status, username = login_result
+    elif hasattr(authenticator, "authentication_status"):
+        authentication_status = authenticator.authentication_status
+        name = getattr(authenticator, "username", "")
+        username = name
+
+    if authentication_status:
+        st.sidebar.success(f"Welcome, {name}!")
+        authenticator.logout("Logout", "sidebar")
+    elif authentication_status is False:
+        st.sidebar.error("Username/password is incorrect")
+    else:
+        st.sidebar.warning("Please enter your username and password")
+
+# ---------------------
+# Only proceed if authenticated
+# ---------------------
 if authentication_status:
-    st.sidebar.success(f"Welcome, {name}!")
-    authenticator.logout("Logout", "sidebar")
-
     # ---------------------
     # Google Sheets
     # ---------------------
-    scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
-    creds = ServiceAccountCredentials.from_json_keyfile_name("service_account.json", scope)
-    client = gspread.authorize(creds)
-    sheet = client.open("Ascentia_Watchlists").sheet1
-    data = sheet.get_all_records()
-    df_watchlist = pd.DataFrame(data)
-    user_watchlist = df_watchlist[df_watchlist['username'] == username]
+    try:
+        scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
+        creds = ServiceAccountCredentials.from_json_keyfile_name("service_account.json", scope)
+        client = gspread.authorize(creds)
+        sheet = client.open("Ascentia_Watchlists").sheet1
+        data = sheet.get_all_records()
+        df_watchlist = pd.DataFrame(data)
+        user_watchlist = df_watchlist[df_watchlist['username'] == username]
+    except Exception as e:
+        st.error(f"Error connecting to Google Sheets: {e}")
+        user_watchlist = pd.DataFrame(columns=['ticker','date_added'])
 
     # ---------------------
     # Stock Search
@@ -89,18 +124,16 @@ if authentication_status:
             breakdown.append({'indicator':'P/E','score':s,'reason':f'P/E={pe}'})
             total_score += s
 
-            # 2) Earnings growth (price % change 1yr)
-            s = 5
-            if len(closes) >= 252:
-                pct = (closes[-1]-closes[0])/closes[0]*100
-                s = 9 if pct>50 else 7 if pct>20 else 5 if pct>0 else 3 if pct>-20 else 1
-            breakdown.append({'indicator':'Earnings Growth','score':s,'reason':f'Price change ≈ {pct:.1f}%' if len(closes)>=2 else 'N/A'})
+            # 2) Earnings growth
+            pct = (closes[-1]-closes[0])/closes[0]*100 if len(closes) >= 2 else 0
+            s = 9 if pct>50 else 7 if pct>20 else 5 if pct>0 else 3 if pct>-20 else 1
+            breakdown.append({'indicator':'Earnings Growth','score':s,'reason':f'Price change ≈ {pct:.1f}%'})
             total_score += s
 
             # 3) ROE
+            roe_pct = roe*100 if roe<1 else roe
             s = 5
             if not np.isnan(roe):
-                roe_pct = roe*100 if roe<1 else roe
                 s = 9 if roe_pct>20 else 7 if roe_pct>10 else 4 if roe_pct>5 else 2
             breakdown.append({'indicator':'ROE','score':s,'reason':f'{roe_pct:.1f}%' if not np.isnan(roe) else 'N/A'})
             total_score += s
@@ -162,33 +195,14 @@ if authentication_status:
             st.write(f"**Last Price:** ${last_price:.2f}")
             st.write(f"**Investment Score:** {final_score}/100")
             st.write("**Recommendation:**", "STRONG BUY 🟢" if final_score>=75 else "NEUTRAL 🟡" if final_score>=50 else "AVOID 🔴")
-
             st.subheader("Indicator Breakdown")
             for b in breakdown:
                 st.write(f"{b['indicator']}: {b['score']}/9 → {b['reason']}")
 
             if st.button("Add to Watchlist"):
-                sheet.append_row([username, ticker_input, str(datetime.now().date())])
-                st.success(f"{ticker_input} added to your watchlist!")
+               
 
-        except Exception as e:
-            st.error(f"Error fetching data: {e}")
 
-    # ---------------------
-    # User Watchlist
-    # ---------------------
-    st.subheader("My Watchlist")
-    user_watchlist = pd.DataFrame(sheet.get_all_records())
-    user_watchlist = user_watchlist[user_watchlist['username']==username]
-    if not user_watchlist.empty:
-        st.table(user_watchlist[['ticker','date_added']])
-    else:
-        st.info("Your watchlist is empty.")
-
-elif authentication_status is False:
-    st.error("Username/password is incorrect")
-else:
-    st.warning("Please enter your username and password")
 
 
 
