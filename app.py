@@ -21,28 +21,33 @@ authenticator = stauth.Authenticate(
     cookie_expiry_days=config['cookie']['expiry_days']
 )
 
-# Call login and store the result
+# -----------------------------
+# Streamlit Authenticator Login
+# -----------------------------
+# Call login and store result
 login_result = authenticator.login("sidebar", key="login_form_1")
 
-# Only unpack and use inside this block
-if login_result is not None:
+# Initialize default values
+name = ""
+authentication_status = None
+
+# Handle login result for older versions
+if login_result is not None and isinstance(login_result, tuple):
     name, authentication_status, username = login_result
 
-    if authentication_status:
-        st.sidebar.success(f"Welcome, {name}!")
-        authenticator.logout("Logout", "sidebar")
-    elif authentication_status is False:
-        st.sidebar.error("Username/password is incorrect")
-else:
-    st.sidebar.warning("Please enter your username and password")
+# For newer versions (>=0.3.2), access via properties
+elif hasattr(authenticator, "authentication_status"):
+    authentication_status = authenticator.authentication_status
+    name = getattr(authenticator, "username", "")
 
-
-
-
-
+# Handle authentication states safely
 if authentication_status:
     st.sidebar.success(f"Welcome, {name}!")
     authenticator.logout("Logout", "sidebar")
+elif authentication_status is False:
+    st.sidebar.error("Username/password is incorrect")
+else:
+    st.sidebar.warning("Please enter your username and password")
 
     # ---------------------
     # Google Sheets
@@ -192,6 +197,7 @@ elif authentication_status is False:
     st.error("Username/password is incorrect")
 elif authentication_status is None:
     st.warning("Please enter your username and password")
+
 
 
 
