@@ -24,22 +24,15 @@ authenticator = stauth.Authenticate(
 # -----------------------------
 # Streamlit Authenticator Login
 # -----------------------------
-login_result = authenticator.login("sidebar", key="login_form_1")
+login_info = authenticator.login("sidebar", "Login")  # location must be 'main' or 'sidebar'
 
-# -----------------------------
 # Initialize defaults
-# -----------------------------
 name = ""
 authentication_status = None
 username = ""
 
-# Handle login result
-if login_result is not None and isinstance(login_result, tuple):
-    name, authentication_status, username = login_result
-elif hasattr(authenticator, "authentication_status"):
-    authentication_status = authenticator.authentication_status
-    username = getattr(authenticator, "username", "")
-    name = username
+if login_info is not None:
+    name, authentication_status, username = login_info
 
 # ---------------------
 # Authentication States
@@ -49,13 +42,10 @@ if authentication_status:
     authenticator.logout("Logout", "sidebar")
 
     # ---------------------
-    # Google Sheets Connection
+    # Connect to Google Sheets
     # ---------------------
     try:
-        scope = [
-            "https://spreadsheets.google.com/feeds",
-            "https://www.googleapis.com/auth/drive"
-        ]
+        scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
         creds = ServiceAccountCredentials.from_json_keyfile_name("service_account.json", scope)
         client = gspread.authorize(creds)
         sheet = client.open("Ascentia_Watchlists").sheet1
@@ -83,6 +73,7 @@ if authentication_status:
             closes = hist['Close'].values
             volumes = hist['Volume'].values
 
+            # --- Compute 10 indicators ---
             breakdown = []
             total_score = 0
             max_per_indicator = 9
@@ -94,13 +85,12 @@ if authentication_status:
             breakdown.append({'indicator':'P/E','score':s,'reason':f'P/E={pe}'})
             total_score += s
 
-            # 2) Earnings growth (price % change 1yr)
+            # 2) Earnings Growth
             pct = 0
+            s = 5
             if len(closes) >= 252:
                 pct = (closes[-1]-closes[0])/closes[0]*100
                 s = 9 if pct>50 else 7 if pct>20 else 5 if pct>0 else 3 if pct>-20 else 1
-            else:
-                s = 5
             breakdown.append({'indicator':'Earnings Growth','score':s,'reason':f'Price change ≈ {pct:.1f}%'})
             total_score += s
 
@@ -129,14 +119,14 @@ if authentication_status:
             breakdown.append({'indicator':'Dividend Yield','score':s,'reason':f'{dy_pct:.2f}%' if not np.isnan(dy_pct) else 'N/A'})
             total_score += s
 
-            # 6) MA Crossover
+            # 6) MA Crossover (50 vs 200)
             def ma(arr, n): return pd.Series(arr).rolling(n).mean().values
             ma_short, ma_long = ma(closes,50), ma(closes,200)
             s = 8 if ma_short[-1]>ma_long[-1] else 2
             breakdown.append({'indicator':'MA50/MA200','score':s,'reason':f'{ma_short[-1]:.2f} vs {ma_long[-1]:.2f}'})
             total_score += s
 
-            # 7) RSI
+            # 7) RSI 14-day
             delta = np.diff(closes)
             up, down = delta.clip(min=0), -delta.clip(max=0)
             roll_up = pd.Series(up).rolling(14).mean().iloc[-1]
@@ -177,6 +167,7 @@ if authentication_status:
             for b in breakdown:
                 st.write(f"{b['indicator']}: {b['score']}/9 → {b['reason']}")
 
+            # Add to watchlist
             if sheet is not None and st.button("Add to Watchlist"):
                 sheet.append_row([username, ticker_input, str(datetime.now().date())])
                 st.success(f"{ticker_input} added to your watchlist!")
@@ -202,7 +193,9 @@ elif authentication_status is None:
     st.warning("Please enter your username and password")
 
 
+
    
+
 
 
 
