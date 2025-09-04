@@ -9,7 +9,7 @@ import numpy as np
 import yaml
 
 # ---------------------
-# Authentication
+# Load credentials
 # ---------------------
 with open("credentials.yaml", "r") as file:
     config = yaml.safe_load(file)
@@ -21,34 +21,22 @@ authenticator = stauth.Authenticate(
     cookie_expiry_days=config['cookie']['expiry_days']
 )
 
-# -----------------------------
-# Streamlit Authenticator Login
-# -----------------------------
-# Call login and store result
-login_result = authenticator.login("sidebar", key="login_form_1")
-
-# Initialize default values
-name = ""
-authentication_status = None
-username = ""
-
-# Handle login result
-if login_result is not None and isinstance(login_result, tuple):
-    name, authentication_status, username = login_result
-elif hasattr(authenticator, "authentication_status"):
-    authentication_status = authenticator.authentication_status
-    username = getattr(authenticator, "username", "")
-    name = username
+# ---------------------
+# Login form
+# ---------------------
+authenticator.login("Login", "sidebar")
 
 # ---------------------
-# Authentication States
+# Authentication handling
 # ---------------------
-if authentication_status:
+if st.session_state.get("authentication_status"):
+    name = st.session_state.get("name")
+    username = st.session_state.get("username")
     st.sidebar.success(f"Welcome, {name}!")
     authenticator.logout("Logout", "sidebar")
 
     # ---------------------
-    # Google Sheets
+    # Google Sheets connection
     # ---------------------
     try:
         scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
@@ -79,12 +67,11 @@ if authentication_status:
             closes = hist['Close'].values
             volumes = hist['Volume'].values
 
-            # --- Compute 10 indicators ---
             breakdown = []
             total_score = 0
             max_per_indicator = 9
 
-            # 1) P/E
+            # --- P/E ---
             if not np.isnan(pe):
                 s = 9 if pe < 10 else 7 if pe < 15 else 5 if pe < 20 else 3 if pe < 30 else 1
             else:
@@ -92,7 +79,7 @@ if authentication_status:
             breakdown.append({'indicator':'P/E','score':s,'reason':f'P/E={pe}'})
             total_score += s
 
-            # 2) Earnings growth (price % change 1yr)
+            # --- Earnings Growth ---
             if len(closes) >= 252:
                 pct = (closes[-1]-closes[0])/closes[0]*100
                 s = 9 if pct>50 else 7 if pct>20 else 5 if pct>0 else 3 if pct>-20 else 1
@@ -102,7 +89,7 @@ if authentication_status:
             breakdown.append({'indicator':'Earnings Growth','score':s,'reason':f'Price change ≈ {pct:.1f}%'})
             total_score += s
 
-            # 3) ROE
+            # --- ROE ---
             if not np.isnan(roe):
                 roe_pct = roe*100 if roe<1 else roe
                 s = 9 if roe_pct>20 else 7 if roe_pct>10 else 4 if roe_pct>5 else 2
@@ -112,7 +99,7 @@ if authentication_status:
             breakdown.append({'indicator':'ROE','score':s,'reason':f'{roe_pct:.1f}%' if not np.isnan(roe_pct) else 'N/A'})
             total_score += s
 
-            # 4) Debt-to-Equity
+            # --- Debt/Equity ---
             if not np.isnan(de):
                 s = 9 if de<20 else 7 if de<50 else 4 if de<100 else 1
             else:
@@ -120,7 +107,7 @@ if authentication_status:
             breakdown.append({'indicator':'Debt/Equity','score':s,'reason':f'{de}'})
             total_score += s
 
-            # 5) Dividend Yield
+            # --- Dividend Yield ---
             if not np.isnan(div_yield):
                 dy_pct = div_yield*100
                 s = 9 if dy_pct>5 else 7 if dy_pct>3 else 5 if dy_pct>1.5 else 2
@@ -130,14 +117,14 @@ if authentication_status:
             breakdown.append({'indicator':'Dividend Yield','score':s,'reason':f'{dy_pct:.2f}%' if not np.isnan(dy_pct) else 'N/A'})
             total_score += s
 
-            # 6) MA Crossover (50 vs 200)
+            # --- MA Crossover ---
             def ma(arr, n): return pd.Series(arr).rolling(n).mean().values
             ma_short, ma_long = ma(closes,50), ma(closes,200)
             s = 8 if ma_short[-1]>ma_long[-1] else 2
             breakdown.append({'indicator':'MA50/MA200','score':s,'reason':f'{ma_short[-1]:.2f} vs {ma_long[-1]:.2f}'})
             total_score += s
 
-            # 7) RSI 14-day
+            # --- RSI 14-day ---
             delta = np.diff(closes)
             up, down = delta.clip(min=0), -delta.clip(max=0)
             roll_up = pd.Series(up).rolling(14).mean().iloc[-1]
@@ -148,7 +135,7 @@ if authentication_status:
             breakdown.append({'indicator':'RSI','score':s,'reason':f'{rsi:.1f}'})
             total_score += s
 
-            # 8) Volume Trend
+            # --- Volume Trend ---
             vol_avg = pd.Series(volumes).rolling(30).mean().iloc[-1]
             vol_now = volumes[-1]
             ratio = vol_now / (vol_avg+1e-9)
@@ -156,19 +143,19 @@ if authentication_status:
             breakdown.append({'indicator':'Volume Trend','score':s,'reason':f'{ratio:.2f}'})
             total_score += s
 
-            # 9) 12m Momentum
+            # --- 12m Momentum ---
             pct12 = (closes[-1]-closes[0])/closes[0]*100 if len(closes)>=252 else 0
             s = 9 if pct12>50 else 7 if pct12>20 else 5 if pct12>0 else 3 if pct12>-20 else 1
             breakdown.append({'indicator':'12m Momentum','score':s,'reason':f'{pct12:.1f}%'})
             total_score += s
 
-            # 10) Analyst Rec (fallback neutral)
+            # --- Analyst Rec ---
             s = 5
             breakdown.append({'indicator':'Analyst Rec','score':s,'reason':'Neutral fallback'})
             total_score += s
 
+            # --- Final Score ---
             final_score = round(total_score / (max_per_indicator*10) * 100)
-
             st.subheader(f"{ticker_input} - {info.get('longName','N/A')}")
             st.write(f"**Last Price:** ${last_price:.2f}")
             st.write(f"**Investment Score:** {final_score}/100")
@@ -197,11 +184,14 @@ if authentication_status:
         else:
             st.info("Your watchlist is empty.")
 
-elif authentication_status is False:
-    st.error("Username/password is incorrect")
-elif authentication_status is None:
-    st.warning("Please enter your username and password")
+elif st.session_state.get("authentication_status") is False:
+    st.sidebar.error("Username/password is incorrect")
+
+elif st.session_state.get("authentication_status") is None:
+    st.sidebar.warning("Please enter your username and password")
+
    
+
 
 
 
