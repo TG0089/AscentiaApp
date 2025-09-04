@@ -24,12 +24,13 @@ authenticator = stauth.Authenticate(
 # -----------------------------
 # Streamlit Authenticator Login
 # -----------------------------
-authenticator.login("sidebar", "Login")
+login_result = authenticator.login("sidebar", "Login")
 
-# Get authentication state
-authentication_status = authenticator.authentication_status
-name = authenticator.name
-username = authenticator.username
+if login_result:
+    name, username, authentication_status = login_result
+else:
+    name = username = None
+    authentication_status = None
 
 # ---------------------
 # Authentication States
@@ -39,7 +40,7 @@ if authentication_status:
     authenticator.logout("Logout", "sidebar")
 
     # ---------------------
-    # Google Sheets
+    # Google Sheets Setup
     # ---------------------
     try:
         scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
@@ -51,7 +52,7 @@ if authentication_status:
         sheet = None
 
     # ---------------------
-    # Stock Search
+    # Stock Analysis
     # ---------------------
     st.title("Ascentia - ASX Investment Analyzer (Full 10-Indicator)")
     ticker_input = st.text_input("Enter ASX Ticker (e.g., BHP.AX)", "BHP.AX").upper()
@@ -192,5 +193,7 @@ elif authentication_status is False:
     st.error("Username/password is incorrect")
 elif authentication_status is None:
     st.info("Please enter your username and password.")
+
+
 
 
